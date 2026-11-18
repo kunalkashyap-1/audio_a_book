@@ -6,7 +6,6 @@
 /media/
 /models/
 /backups/
-/docs/
 
 # Python
 .venv/
