@@ -1,0 +1,28 @@
+# Next.js image: the generated contracts are committed source, so no Python is needed here.
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN npm ci
+
+FROM deps AS builder
+COPY . .
+# next.config.ts resolves this at build time; Compose passes the internal service URL.
+ARG AAB_API_URL=http://api:8000
+ENV AAB_API_URL=${AAB_API_URL}
+RUN npm run build
+
+FROM node:20-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+COPY --from=builder /app/apps/web/next.config.ts ./apps/web/next.config.ts
+COPY --from=builder /app/apps/web/next-env.d.ts ./apps/web/next-env.d.ts
+COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/tsconfig.json
+COPY --from=builder /app/apps/web/.next ./apps/web/.next
+COPY --from=builder /app/packages/contracts ./packages/contracts
+EXPOSE 3000
+CMD ["npm", "run", "start"]

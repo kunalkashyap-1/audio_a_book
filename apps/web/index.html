@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Audio Book</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --line: #252b35; --text: #e8eaed;
+    --muted: #9aa3af; --accent: #7cc4a4; --accent-dim: #2d4a3f; --warn: #e0b366;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 22px 28px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 70px); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  aside { border-right: 1px solid var(--line); padding: 16px; }
+  section { padding: 24px 28px; max-width: 900px; }
+  .book { padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 6px;
+          border: 1px solid transparent; }
+  .book:hover { background: var(--panel); }
+  .book.active { background: var(--panel); border-color: var(--line); }
+  .book .t { font-weight: 600; }
+  .book .a { color: var(--muted); font-size: 12.5px; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px;
+           background: var(--accent-dim); color: var(--accent); margin-left: 6px; }
+  .badge.grey { background: #232833; color: var(--muted); }
+  .chapter { display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+             border-bottom: 1px solid var(--line); cursor: pointer; }
+  .chapter:hover { background: var(--panel); }
+  .chapter.playing { background: var(--panel); box-shadow: inset 2px 0 0 var(--accent); }
+  .chapter .n { color: var(--muted); width: 26px; font-variant-numeric: tabular-nums; }
+  .chapter .name { flex: 1; }
+  .chapter .state { color: var(--muted); font-size: 12px; }
+  .cast { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 18px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+          font-size: 12px; color: var(--muted); }
+  .player { position: sticky; bottom: 0; background: var(--panel);
+            border-top: 1px solid var(--line); padding: 12px 16px; margin-top: 20px; }
+  audio { width: 100%; filter: invert(.92) hue-rotate(180deg); }
+  button, .btn { background: var(--accent); color: #0b1210; border: 0; border-radius: 7px;
+                 padding: 8px 13px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { background: var(--bg); border: 1px solid var(--line); color: var(--text);
+                  border-radius: 7px; padding: 8px 10px; font: inherit; width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .muted { color: var(--muted); }
+  .err { color: #e88; font-size: 13px; margin-top: 8px; }
+  details { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .prog { height: 3px; background: #232833; border-radius: 2px; overflow: hidden;
+          margin-top: 6px; }
+  .prog > i { display: block; height: 100%; background: var(--accent); width: 0; }
+  text { }
+</style>
+</head>
+<body>
+<header>
+  <h1>Open Audio Book</h1>
+  <span class="sub" id="status">connecting…</span>
+</header>
+
+<main>
+  <aside>
+    <div class="row" style="margin-bottom:12px">
+      <input id="search" placeholder="Filter books" oninput="renderBooks()">
+      <button class="ghost" onclick="loadBooks()" title="Refresh">↻</button>
+    </div>
+    <div id="books"></div>
+
+    <details>
+      <summary>Add a book</summary>
+      <div style="display:grid; gap:8px; margin-top:12px">
+        <input id="f-title" placeholder="Title (optional)">
+        <input id="f-author" placeholder="Author (optional)">
+        <select id="f-rights">
+          <option value="public_domain_us">Public domain (US)</option>
+          <option value="user_owned">I own the rights</option>
+          <option value="unknown">Unknown / private</option>
+        </select>
+        <input id="f-file" type="file" accept=".txt,.md,.html,.htm,.epub">
+        <input id="f-token" placeholder="Admin token (if required)" type="password">
+        <button onclick="uploadBook()">Upload &amp; analyse</button>
+        <div class="muted" style="font-size:12px">
+          TXT, Markdown, HTML or EPUB. Max 25&nbsp;MB. Files stay on this machine.
+        </div>
+        <div class="err" id="up-err"></div>
+      </div>
+    </details>
+  </aside>
+
+  <section>
+    <div id="book-view"><p class="muted">Choose a book to begin.</p></div>
+  </section>
+</main>
+
+<script>
+const state = { books: [], book: null, playing: null, poll: null };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function token() { return localStorage.getItem("aab_token") || ""; }
+
+async function api(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  if (token()) headers["x-admin-token"] = token();
+  const res = await fetch(path, Object.assign({}, options, { headers }));
+  if (res.status === 401) throw new Error("admin token required");
+  return res;
+}
+
+async function boot() {
+  try {
+    const h = await (await fetch("/api/v1/health")).json();
+    $("status").textContent =
+      `${h.speech} · ${h.provider} · queue ${h.queue.queued || 0} queued` +
+      (h.auth_required ? " · token required for uploads" : "");
+  } catch { $("status").textContent = "offline"; }
+  await loadBooks();
+}
+
+async function loadBooks() {
+  const res = await fetch("/api/v1/books");
+  state.books = (await res.json()).items;
+  renderBooks();
+}
+
+function renderBooks() {
+  const q = $("search").value.toLowerCase();
+  $("books").innerHTML = state.books
+    .filter((b) => (b.title + " " + (b.author || "")).toLowerCase().includes(q))
+    .map((b) => `
+      <div class="book ${state.book?.work.id === b.id ? "active" : ""}"
+           onclick="openBook('${b.id}')">
+        <div class="t">${esc(b.title)}</div>
+        <div class="a">${esc(b.author || "Unknown")}
+          <span class="badge ${b.status === "ready" ? "" : "grey"}">${b.status}</span>
+          <span class="badge grey">${b.chapters} ch</span>
+        </div>
+      </div>`).join("") || `<p class="muted">No books yet. Upload one.</p>`;
+}
+
+async function openBook(id) {
+  const res = await fetch(`/api/v1/books/${id}`);
+  state.book = await res.json();
+  renderBooks();
+  renderBook();
+}
+
+function renderBook() {
+  const b = state.book;
+  if (!b) return;
+  const chapters = b.chapters.map((c) => `
+    <div class="chapter ${state.playing?.id === c.id ? "playing" : ""}"
+         onclick="playChapter('${c.id}')">
+      <span class="n">${c.ordinal + 1}</span>
+      <span class="name">${esc(c.title || "Chapter " + (c.ordinal + 1))}</span>
+      <span class="state" id="st-${c.id}">${label(c)}</span>
+    </div>`).join("");
+
+  $("book-view").innerHTML = `
+    <h2 style="margin:0 0 4px">${esc(b.work.title)}</h2>
+    <div class="muted">${esc(b.work.author || "Unknown")} · ${b.work.rights_basis}</div>
+    <div class="cast">${b.cast.map((c) =>
+      `<span class="chip">${esc(c.name)} · ${esc(c.voice || "voice")}</span>`).join("")}</div>
+    <div class="row" style="margin-bottom:10px">
+      <button onclick="generateAll()">Generate all chapters</button>
+      <span class="muted" style="font-size:12px">Generation runs in the local worker.</span>
+    </div>
+    <div id="chapters">${chapters}</div>
+    <div class="player">
+      <div class="row" style="justify-content:space-between; margin-bottom:8px">
+        <strong id="now">${state.playing
+          ? esc(state.playing.title || "Chapter " + (state.playing.ordinal + 1))
+          : "Nothing playing"}</strong>
+        <span class="muted" id="now-state" style="font-size:12px"></span>
+      </div>
+      <audio id="audio" controls preload="metadata"
+             onended="nextChapter()" ontimeupdate="remember()"></audio>
+      <div class="prog"><i id="bar"></i></div>
+    </div>`;
+}
+
+function label(c) {
+  if (c.status === "ready") return "ready";
+  if (c.status === "rendering") return `${c.progress}/${c.total}`;
+  if (c.status === "ready_with_gaps") return "ready (gaps)";
+  if (c.status === "not_started") return "not started";
+  return c.status;
+}
+
+async function generateAll() {
+  const res = await api(`/api/v1/books/${state.book.work.id}/generate`, { method: "POST" });
+  if (!res.ok) { alert("Could not queue generation."); return; }
+  setTimeout(() => refreshBook(), 800);
+}
+
+async function playChapter(chapterId) {
+  clearInterval(state.poll);
+  const chapter = state.book.chapters.find((c) => c.id === chapterId);
+  state.playing = chapter;
+  $("now").textContent = chapter.title || `Chapter ${chapter.ordinal + 1}`;
+  highlight();
+
+  const res = await fetch(`/api/v1/chapters/${chapterId}/audio`);
+  if (res.status === 200) {
+    const manifest = await res.json();
+    start(manifest);
+    return;
+  }
+  const info = await res.json();
+  setState(chapterId, "queued…");
+  const req = await api(`/api/v1/chapters/${chapterId}/audio`, { method: "POST" });
+  if (!req.ok) { setState(chapterId, "error"); return; }
+  poll(chapterId, info);
+}
+
+function poll(chapterId) {
+  state.poll = setInterval(async () => {
+    const res = await fetch(`/api/v1/chapters/${chapterId}/audio`);
+    if (res.status === 200) {
+      clearInterval(state.poll);
+      start(await res.json());
+      return;
+    }
+    const info = await res.json();
+    if (info.total) {
+      setState(chapterId, `${info.progress}/${info.total}`);
+      $("now-state").textContent = `rendering ${info.progress}/${info.total}`;
+      $("bar").style.width = `${100 * info.progress / info.total}%`;
+    } else {
+      setState(chapterId, info.status || "queued");
+    }
+  }, 1500);
+}
+
+function start(manifest) {
+  const audio = $("audio");
+  if (!manifest.master_url) { $("now-state").textContent = "no audio"; return; }
+  const tok = token();
+  audio.src = tok
+    ? manifest.master_url + (manifest.master_url.includes("?") ? "&" : "?")
+      + "token=" + encodeURIComponent(tok)
+    : manifest.master_url;
+  const saved = Number(localStorage.getItem(`pos:${manifest.chapter_id}`) || 0);
+  if (saved > 2) audio.currentTime = saved;
+  audio.play().catch(() => {});
+  $("now-state").textContent = manifest.complete ? "" : "partial";
+  $("bar").style.width = "0%";
+  setState(manifest.chapter_id, "playing");
+}
+
+function highlight() {
+  document.querySelectorAll(".chapter").forEach((el, i) => {
+    const chapter = state.book?.chapters[i];
+    el.classList.toggle("playing", Boolean(chapter && chapter.id === state.playing?.id));
+  });
+}
+
+function setState(chapterId, text) {
+  const el = $(`st-${chapterId}`);
+  if (el) el.textContent = text;
+}
+
+function nextChapter() {
+  const list = state.book.chapters;
+  const i = list.findIndex((c) => c.id === state.playing?.id);
+  if (i >= 0 && i + 1 < list.length) playChapter(list[i + 1].id);
+}
+
+function remember() {
+  const audio = $("audio");
+  if (!audio.duration) return;
+  $("bar").style.width = `${100 * audio.currentTime / audio.duration}%`;
+  if (state.playing) localStorage.setItem(`pos:${state.playing.id}`, audio.currentTime);
+}
+
+async function refreshBook() {
+  if (!state.book) return;
+  if (state.playing) return;   // never rebuild the DOM under a live <audio> element
+  await openBook(state.book.work.id);
+}
+
+async function uploadBook() {
+  const file = $("f-file").files[0];
+  $("up-err").textContent = "";
+  if (!file) { $("up-err").textContent = "Choose a file first."; return; }
+  const tok = $("f-token").value.trim();
+  if (tok) localStorage.setItem("aab_token", tok);
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", $("f-title").value);
+  form.append("author", $("f-author").value);
+  form.append("rights_basis", $("f-rights").value);
+
+  let res;
+  try {
+    res = await api("/api/v1/books", { method: "POST", body: form });
+  } catch (err) {
+    $("up-err").textContent = err.message || "Upload failed.";
+    return;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    $("up-err").textContent = body.message || body.detail || "Upload failed.";
+    return;
+  }
+  const out = await res.json();
+  await loadBooks();
+  await openBook(out.book_id);
+  setTimeout(refreshBook, 2500);
+}
+
+boot();
+setInterval(() => { if (state.book && !state.playing) refreshBook(); }, 12000);
+</script>
+</body>
+</html>

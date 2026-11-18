@@ -1,0 +1,90 @@
+x-aab-env: &aab-env
+  AAB_HOME: /data
+  AAB_DATABASE_URL: sqlite:////data/aab.db
+  AAB_MEDIA_DIR: /data/media
+  AAB_MODELS_DIR: /data/models
+  AAB_TTS_PROVIDER: ${AAB_TTS_PROVIDER:-auto}
+  AAB_ADMIN_TOKEN: ${AAB_ADMIN_TOKEN:-}
+  AAB_JWT_SECRET: ${AAB_JWT_SECRET:-}
+  AAB_PUBLIC_BASE_URL: ${AAB_PUBLIC_BASE_URL:-http://localhost:3000}
+
+x-python-build: &python-build
+  context: .
+  args:
+    AAB_PY_EXTRAS: ${AAB_PY_EXTRAS:-dev}
+
+services:
+  api:
+    build: *python-build
+    image: aab-python:local
+    environment:
+      <<: *aab-env
+      AAB_ROLE: api
+    ports:
+      - "${AAB_API_PORT:-8000}:8000"
+    volumes:
+      - aab-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+
+  worker:
+    build: *python-build
+    image: aab-python:local
+    environment:
+      <<: *aab-env
+      AAB_ROLE: worker
+    volumes:
+      - aab-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        AAB_API_URL: ${AAB_API_URL:-http://api:8000}
+    image: aab-web:local
+    environment:
+      AAB_API_URL: ${AAB_API_URL:-http://api:8000}
+      NODE_ENV: production
+    ports:
+      - "${AAB_WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional: `docker compose --profile models run --rm models` downloads Kokoro weights
+  # into the shared volume. Requires building with AAB_PY_EXTRAS=kokoro,dev.
+  models:
+    build: *python-build
+    image: aab-python:local
+    profiles: [models]
+    environment:
+      <<: *aab-env
+      AAB_ROLE: models
+    volumes:
+      - aab-data:/data
+
+volumes:
+  aab-data:

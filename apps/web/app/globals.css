@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Palette mirrors the zero-build player in apps/web/index.html. */
+@theme {
+  --color-ink-950: #0f1115;
+  --color-ink-900: #161a21;
+  --color-ink-850: #1b2029;
+  --color-ink-800: #252b35;
+  --color-ink-700: #323a47;
+  --color-mist-100: #e8eaed;
+  --color-mist-300: #c3c9d2;
+  --color-mist-400: #9aa3af;
+  --color-mint-300: #a5dbc3;
+  --color-mint-400: #7cc4a4;
+  --color-mint-900: #2d4a3f;
+  --color-gold-400: #e0b366;
+  --color-rose-400: #ee8888;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 text-mist-100 antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  ::selection {
+    background: var(--color-mint-900);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-ink-800 bg-ink-900;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-mint-400 px-3.5 py-2
+           text-sm font-semibold text-ink-950 transition-colors hover:bg-mint-300
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ink-800
+           bg-transparent px-3.5 py-2 text-sm font-medium text-mist-100 transition-colors
+           hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-ink-800 bg-ink-950 px-3 py-2 text-sm text-mist-100
+           outline-none placeholder:text-mist-400 focus:border-mint-900;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-ink-800 px-2.5 py-0.5
+           text-xs text-mist-400;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full bg-mint-900 px-2 py-0.5 text-[11px]
+           font-medium text-mint-300;
+  }
+
+  .badge-grey {
+    @apply bg-ink-700 text-mist-400;
+  }
+
+  .link {
+    @apply text-mint-400 underline-offset-4 hover:text-mint-300 hover:underline;
+  }
+
+  .audio-player {
+    width: 100%;
+    filter: invert(0.92) hue-rotate(180deg);
+  }
+}

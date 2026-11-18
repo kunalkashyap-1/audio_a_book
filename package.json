@@ -1,0 +1,21 @@
+{
+  "name": "open-audio-book",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Open Audio Book — web workspace (npm workspaces; no pnpm required)",
+  "workspaces": [
+    "apps/web",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "contracts:generate": "npm run generate -w @aab/contracts",
+    "contracts": "./scripts/generate_contracts.sh",
+    "dev": "npm run dev -w @aab/web",
+    "build": "npm run build -w @aab/web",
+    "start": "npm run start -w @aab/web",
+    "typecheck": "npm run typecheck -w @aab/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,38 @@
+# Runtime data: database, media, downloaded models
+/var/
+*.db
+*.db-wal
+*.db-shm
+/media/
+/models/
+/backups/
+/docs/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+
+# Node / Next.js (target web app)
+node_modules/
+.next/
+out/
+dist/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
